@@ -78,7 +78,7 @@ end
 ---@param original_lines string[]
 ---@param new_lines string[]
 M.apply_text_edits = function(bufnr, original_lines, new_lines)
-    -- Add trailing newline to work around vim.diff not handline newline-at-end-of-file well
+    -- Add trailing newline to work around vim.text.diff not handline newline-at-end-of-file well
     local original_text = table.concat(original_lines, '\n') .. '\n'
     local new_text = table.concat(new_lines, '\n') .. '\n'
 
@@ -88,7 +88,8 @@ M.apply_text_edits = function(bufnr, original_lines, new_lines)
         return
     end
 
-    local indices = vim.diff(original_text, new_text, { result_type = 'indices', algorithm = 'histogram' }) --[[@as table]]
+    local diff = vim.text.diff or vim.diff
+    local indices = diff(original_text, new_text, { result_type = 'indices', algorithm = 'histogram' }) --[[@as table]]
 
     local text_edits = vim.iter(indices)
         :map(function(idx)
