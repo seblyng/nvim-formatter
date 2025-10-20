@@ -12,10 +12,10 @@ function M.setup(opts)
             callback = function()
                 if type(opts.format_on_save) == 'function' then
                     if opts.format_on_save() then
-                        vim.cmd.Format()
+                        require('formatter.format'):new():start('all', true)
                     end
                 else
-                    vim.cmd.Format()
+                    require('formatter.format'):new():start('all', true)
                 end
             end,
         })

@@ -107,18 +107,30 @@ end
 
 ---@param format NvimFormatterFormat
 ---@param type "basic" | "injections" | "all"
-local function run(format, type)
+---@param silent boolean?
+local function run(format, type, silent)
     if type == 'basic' then
         local output = format:run(format.confs, format.input)
         format:insert(output)
     elseif type == 'injections' then
-        local output = format:run_injections(format.input)
+        local injections = format:find_injections(format.input)
+        local output = format:run_injections(format.input, injections)
         format:insert(output)
     else
         local output = format.confs and format:run(format.confs, format.input) or format.input
         async.scheduler()
+
         local ok, res = pcall(function()
-            return format:run_injections(output)
+            local injections = format:find_injections(output)
+            if not format.confs and #injections == 0 and not silent then
+                vim.notify(
+                    string.format('No formatter configurations found for %s', vim.bo[format.bufnr].ft),
+                    vim.log.levels.INFO,
+                    notify_opts
+                )
+            end
+
+            return #injections > 0 and format:run_injections(output, injections) or output
         end)
         if not ok then
             format:insert(output)
@@ -130,9 +142,10 @@ end
 
 ---@param format NvimFormatterFormat
 ---@param type "basic" | "injections" | "all"
-local start = async.void(function(format, type)
+---@param silent boolean?
+local start = async.void(function(format, type, silent)
     format.is_formatting = true
-    local ok, res = pcall(run, format, type)
+    local ok, res = pcall(run, format, type, silent)
     format.is_formatting = false
     if not ok then
         error(res)
@@ -140,7 +153,8 @@ local start = async.void(function(format, type)
 end)
 
 ---@param type "all" | "basic" | "injections"
-function Format:start(type)
+---@param silent boolean?
+function Format:start(type, silent)
     if not vim.bo[self.bufnr].modifiable then
         return vim.notify('Buffer is not modifiable', vim.log.levels.INFO, notify_opts)
     end
@@ -174,7 +188,7 @@ function Format:start(type)
         end,
     })
 
-    start(self, type)
+    start(self, type, silent)
 end
 
 ---@param output string[]
@@ -248,10 +262,9 @@ end
 ---@field output string[]
 
 ---@param input string[]
+---@param injections NvimFormatterInjection[]
 ---@return string[]
-function Format:run_injections(input)
-    local injections = self:find_injections(input)
-
+function Format:run_injections(input, injections)
     local jobs = vim.iter(injections)
         :map(function(injection)
             return async.void(function(cb)
