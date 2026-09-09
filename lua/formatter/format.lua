@@ -1,5 +1,5 @@
 local config = require('formatter.config')
-local async = require('formatter.async')
+local async = vim.async
 local notify_opts = { title = 'Formatter' }
 
 ---@class NvimFormatterFormatRange
@@ -39,19 +39,15 @@ function Format:new(range, bufnr)
     return o
 end
 
--- Crete a wrapper for `vim.system` that can be ran asynchronously with `async.wrap`.
--- Have a timeout to kill the process after 5000ms. The `timeout` option tries to terminate
--- the process with SIGTERM instead of killing it with SIGKILL.
-local function system_wrap(...)
+-- Create an async `vim.system` wrapper that will kill the process after 5000ms if it is still running.
+local asystem = async.wrap(3, function(...)
     local out = vim.system(...)
     vim.defer_fn(function()
         if not out:is_closing() then
             out:kill(9)
         end
     end, 5000)
-end
-
-local asystem = async.wrap(system_wrap, 3)
+end)
 
 ---@param bufnr number
 ---@param conf NvimFormatterFiletypeConfig
@@ -59,14 +55,14 @@ local asystem = async.wrap(system_wrap, 3)
 ---@return string[] | nil
 local execute = function(bufnr, conf, input)
     if conf.cond then
-        async.scheduler()
+        async.await(vim.schedule)
         if not conf.cond() then
             return nil
         end
     end
 
     if vim.fn.executable(conf.exe) ~= 1 then
-        async.scheduler()
+        async.await(vim.schedule)
         vim.notify_once(string.format('%s: executable not found', conf.exe), vim.log.levels.ERROR, notify_opts)
         return nil
     end
@@ -77,7 +73,7 @@ local execute = function(bufnr, conf, input)
     })
 
     if out.code ~= 0 then
-        async.scheduler()
+        async.await(vim.schedule)
         local errmsg = out.stderr and out.stderr or out.stdout
         vim.notify(
             string.format(
@@ -92,7 +88,7 @@ local execute = function(bufnr, conf, input)
         return nil
     end
     if out.signal == 9 then
-        async.scheduler()
+        async.await(vim.schedule)
         vim.notify(
             string.format('Timeout when formatting %s with %s', vim.api.nvim_buf_get_name(bufnr), conf.exe),
             vim.log.levels.ERROR,
@@ -118,7 +114,7 @@ local function run(format, type, silent)
         format:insert(output)
     else
         local output = format.confs and format:run(format.confs, format.input) or format.input
-        async.scheduler()
+        async.await(vim.schedule)
 
         local ok, res = pcall(function()
             local injections = format:find_injections(output)
@@ -143,14 +139,14 @@ end
 ---@param format NvimFormatterFormat
 ---@param type "basic" | "injections" | "all"
 ---@param silent boolean?
-local start = async.void(function(format, type, silent)
+local function start(format, type, silent)
     format.is_formatting = true
-    local ok, res = pcall(run, format, type, silent)
-    format.is_formatting = false
-    if not ok then
-        error(res)
-    end
-end)
+    local task = async.run(run, format, type, silent)
+    task:on_complete(function()
+        format.is_formatting = false
+    end)
+    task:raise_on_error()
+end
 
 ---@param type "all" | "basic" | "injections"
 ---@param silent boolean?
@@ -243,7 +239,7 @@ end
 ---@param range NvimFormatterFormatRange
 ---@return string[]
 local function try_transform_text(text, ft, range)
-    async.scheduler()
+    async.await(vim.schedule)
     local conf = config.get().treesitter.auto_indent[ft]
     if not conf or ((type(conf) == 'function') and not conf()) then
         return text
@@ -265,18 +261,24 @@ end
 ---@param injections NvimFormatterInjection[]
 ---@return string[]
 function Format:run_injections(input, injections)
+    local limit = async.semaphore(10)
     local jobs = vim.iter(injections)
         :map(function(injection)
-            return async.void(function(cb)
-                local output = self:run(injection.confs, injection.input)
-                output = try_transform_text(output, injection.ft, injection.range)
-                cb({ output = output, range = injection.range })
+            return async.run(function()
+                return limit:with(function()
+                    local output = self:run(injection.confs, injection.input)
+                    output = try_transform_text(output, injection.ft, injection.range)
+                    return { output = output, range = injection.range }
+                end)
             end)
         end)
         :totable()
 
     ---@type NvimFormatterInjectionOutput[]
-    local res = vim.iter(async.join(jobs, 10)):flatten():totable()
+    local res = {}
+    for _, job in ipairs(jobs) do
+        table.insert(res, async.await(job))
+    end
 
     -- Sort it in reverse, as we need to replace the text
     -- bottom oup to not mess with the range

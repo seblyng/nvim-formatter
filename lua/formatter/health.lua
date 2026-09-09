@@ -37,12 +37,12 @@ function M.check()
     vim.health.start('nvim-formatter: Requirements')
 
     local v = vim.version()
-    if not (v.major == 0 and v.minor < 10) then
-        vim.health.ok('Neovim >= 0.10')
+    if not (v.major == 0 and v.minor < 13) then
+        vim.health.ok('Neovim >= 0.13')
     else
         vim.health.error(
-            'Neovim >= 0.10 is required',
-            'Please upgrade to Neovim 0.10 or later. See https://github.com/neovim/neovim/releases'
+            'Neovim >= 0.13 is required',
+            'Please upgrade to Neovim 0.13 or later. See https://github.com/neovim/neovim/releases'
         )
     end
 

@@ -4,7 +4,7 @@ Asynchronous formatter with treesitter integration
 
 ## Requirements
 
-- Neovim 0.10
+- Neovim 0.13
 
 ## Install
 
@@ -221,12 +221,6 @@ for my own use, when `formatter.nvim` didn't fit my needs. I will continue to
 use this plugin and maintain it, but I can't guarantee the same maintainability
 as `conform.nvim`, and I will probably not add many more features as I see this
 as pretty much feature complete.
-
-Also, a very big thank you to [`lewis6991`](https://github.com/lewis6991) for
-his async [plugin](https://github.com/lewis6991/async.nvim) which I decided to
-bundle inside here to not force users to add another plugin to their plugin list.
-Thank you to all his work for neovim core, and all the amazing plugins he has developed
-and maintain
 
 Huge thanks to [`formatter.nvim`](https://github.com/mhartington/formatter.nvim)
 for initial inspiration
